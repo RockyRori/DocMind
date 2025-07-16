@@ -1,0 +1,8 @@
+Flask
+flask-cors
+SQLAlchemy
+Flask-SQLAlchemy
+PyMySQL
+PyPDF2
+python-docx
+markdown
