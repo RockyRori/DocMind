@@ -20,9 +20,9 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: env.VITE_API_BASE_URL,    // 从 .env 中读取
+          target: 'http://localhost:5000',    // 从 .env 中读取
           changeOrigin: true,
-          rewrite: path => path.replace(/^\/api/, '')
+//           rewrite: path => path.replace(/^\/api/, '')
         }
       }
     }

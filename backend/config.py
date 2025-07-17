@@ -4,6 +4,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class Config:
-    SQLALCHEMY_DATABASE_URI = "mysql+pymysql://root:qwertyuiop@localhost:3306/docmind"
+    SQLALCHEMY_DATABASE_URI = "mysql+pymysql://root:qwertyuiop@localhost:3306/docmind?charset=utf8mb4"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+    # 上传与生成文件都放在这里
+    UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
