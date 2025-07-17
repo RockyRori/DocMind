@@ -34,6 +34,7 @@ class FileRecord(db.Model):
             "md_url": url_for(
                 "files.download_md",
                 file_base=self.file_base,
+                pdf_name_no_ext=name_without_ext,
                 md_name=self.md_name,
                 _external=False
             )

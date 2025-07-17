@@ -6,14 +6,9 @@ from flask import (
 )
 from backend.app import db
 from backend.models.file_record import FileRecord
+from backend.services.pdf_service import ensure_upload_folder, async_convert_with_local_mineru
 
 files_bp = Blueprint("files", __name__)
-
-
-def ensure_upload_folder(file_base: str):
-    folder = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base)
-    os.makedirs(folder, exist_ok=True)
-    return folder
 
 
 @files_bp.route("", methods=["GET"])
@@ -29,22 +24,21 @@ def upload_file():
         return jsonify({"error": "缺少 file 字段"}), 400
 
     file_base = request.form.get("file_base", "server_default")
-    file_path = request.form.get("file_path", "/")
     folder = ensure_upload_folder(file_base)
 
-    # 保存 PDF
+    # 1. 保存 PDF
     filename = uploaded.filename
     save_path = os.path.join(folder, filename)
     uploaded.save(save_path)
     pdf_size = f"{os.path.getsize(save_path) / 1024 / 1024:.1f}MB"
 
-    # 更新或新增记录
+    # 2. 创建或更新数据库记录
     rec = FileRecord.query.get((file_base, filename))
     if not rec:
         rec = FileRecord(
             file_base=file_base,
             pdf_name=filename,
-            file_path=file_path,
+            file_path=folder,
             pdf_size=pdf_size
         )
         db.session.add(rec)
@@ -53,8 +47,10 @@ def upload_file():
         rec.pdf_time = datetime.utcnow()
     db.session.commit()
 
-    # 此处可触发后台异步转换
+    # 3. 异步调用本地 mineru CLI 生成 Markdown
+    async_convert_with_local_mineru(rec, current_app._get_current_object())
 
+    # 4. 返回记录（此时 md_name 仍为 UNKNOWN）
     return jsonify(rec.to_dict()), 201
 
 
@@ -68,15 +64,20 @@ def download_pdf(file_base, filename):
     return send_from_directory(folder, filename, as_attachment=False)
 
 
-@files_bp.route("/download/md/<file_base>/<path:md_name>", methods=["GET"])
-def download_md(file_base, md_name):
-    folder = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base)
-    file_path = os.path.join(folder, md_name)
+@files_bp.route("/download/md/<file_base>/<pdf_name_no_ext>/<path:md_name>", methods=["GET"])
+def download_md(file_base, pdf_name_no_ext, md_name):
+    """
+    从本地 mineru CLI 生成的 vlm 子目录下载 Markdown
+      uploads/{file_base}/{pdf_name_no_ext}/vlm/{md_name}
+    """
+    base = current_app.config["UPLOAD_FOLDER"]
+    vlm_dir = os.path.join(base, file_base, pdf_name_no_ext, "vlm")
+    file_path = os.path.join(vlm_dir, md_name)
     if not os.path.exists(file_path):
         abort(404)
     # as_attachment=True 强制下载
     return send_from_directory(
-        folder, md_name,
+        vlm_dir, md_name,
         as_attachment=True,
         download_name=md_name,
         mimetype="text/markdown"
