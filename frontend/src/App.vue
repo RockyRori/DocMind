@@ -1,9 +1,11 @@
 <!-- src/App.vue -->
 <template>
-  <div class="container mx-auto p-4 space-y-8">
-    <!-- 文档列表区域 -->
-    <DocumentList />
-  </div>
+  <n-config-provider>
+    <div class="container mx-auto p-4 space-y-8">
+      <!-- 文档列表区域 -->
+      <DocumentList />
+    </div>
+  </n-config-provider>
 </template>
 
 <script setup>
