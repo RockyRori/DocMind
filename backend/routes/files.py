@@ -79,7 +79,7 @@ def download_md(file_base, md_name):
     # as_attachment=True 强制下载
     return send_from_directory(
         vlm_dir, md_name,
-        as_attachment=True,
+        as_attachment=False,
         download_name=md_name,
         mimetype="text/markdown"
     )
