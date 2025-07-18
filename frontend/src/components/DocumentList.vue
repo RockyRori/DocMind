@@ -51,7 +51,7 @@ const columns = [
   { key: 'pdf_name', title: '文件名' },
   { key: 'pdf_time', title: '上传日期' },
   { key: 'pdf_size', title: '文件体积' },
-  { key: 'mdAction', title: 'Markdown' }
+  { key: 'md_name', title: 'Markdown' }
 ]
 
 onMounted(load)

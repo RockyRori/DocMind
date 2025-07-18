@@ -48,7 +48,7 @@ def upload_file():
     db.session.commit()
 
     # 3. 异步调用本地 mineru CLI 生成 Markdown
-    async_convert_with_local_mineru(rec, current_app._get_current_object())
+    async_convert_with_local_mineru(current_app._get_current_object(), rec.file_base, rec.pdf_name)
 
     # 4. 返回记录（此时 md_name 仍为 UNKNOWN）
     return jsonify(rec.to_dict()), 201
@@ -64,14 +64,15 @@ def download_pdf(file_base, filename):
     return send_from_directory(folder, filename, as_attachment=False)
 
 
-@files_bp.route("/download/md/<file_base>/<pdf_name_no_ext>/<path:md_name>", methods=["GET"])
-def download_md(file_base, pdf_name_no_ext, md_name):
+@files_bp.route("/download/md/<file_base>/<path:md_name>", methods=["GET"])
+def download_md(file_base, md_name):
     """
     从本地 mineru CLI 生成的 vlm 子目录下载 Markdown
-      uploads/{file_base}/{pdf_name_no_ext}/vlm/{md_name}
+      uploads/{file_base}/{name_without_ext}/vlm/{md_name}
     """
+    name_without_ext = md_name.rsplit(".", 1)[0]
     base = current_app.config["UPLOAD_FOLDER"]
-    vlm_dir = os.path.join(base, file_base, pdf_name_no_ext, "vlm")
+    vlm_dir = os.path.join(base, file_base, name_without_ext, "vlm")
     file_path = os.path.join(vlm_dir, md_name)
     if not os.path.exists(file_path):
         abort(404)
@@ -86,13 +87,41 @@ def download_md(file_base, pdf_name_no_ext, md_name):
 
 @files_bp.route("/<file_base>/<pdf_name>", methods=["DELETE"])
 def delete_file(file_base, pdf_name):
+    """
+    删除指定 PDF 及其生成的 Markdown 和所有关联目录。
+    """
+    # 查询记录
     rec = FileRecord.query.get_or_404((file_base, pdf_name))
-    # 删除本地文件
-    pdf_path = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base, rec.pdf_name)
-    md_path = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base, rec.md_name)
-    for p in [pdf_path, md_path]:
-        if os.path.exists(p):
-            os.remove(p)
+    base_upload = current_app.config["UPLOAD_FOLDER"]
+
+    # 删除 PDF 文件
+    pdf_path = os.path.join(base_upload, file_base, rec.pdf_name)
+    if os.path.isfile(pdf_path):
+        try:
+            os.remove(pdf_path)
+        except Exception as e:
+            current_app.logger.warning(f"删除 PDF 文件失败 {pdf_path}: {e}")
+
+    # 删除 Markdown 文件
+    md_path = os.path.join(base_upload, file_base, rec.md_name)
+    if os.path.isfile(md_path):
+        try:
+            os.remove(md_path)
+        except Exception as e:
+            current_app.logger.warning(f"删除 Markdown 文件失败 {md_path}: {e}")
+
+    # 删除 mineru 生成的子目录
+    name_without_ext = pdf_name.rsplit(".", 1)[0]
+    output_dir = os.path.join(base_upload, file_base, name_without_ext)
+    if os.path.isdir(output_dir):
+        import shutil
+        try:
+            shutil.rmtree(output_dir)
+        except Exception as e:
+            current_app.logger.warning(f"删除输出目录失败 {output_dir}: {e}")
+
+    # 删除数据库记录
     db.session.delete(rec)
     db.session.commit()
+
     return jsonify({"message": "已删除"})
