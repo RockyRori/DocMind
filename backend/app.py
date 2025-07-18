@@ -12,7 +12,11 @@ def create_app():
     app.config.from_object(Config)
 
     # 1) 跨域配置
-    CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://172.20.41.146:5173",
+    ]
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
 
     # 2) 初始化 ORM
     db.init_app(app)
@@ -29,7 +33,6 @@ def create_app():
         db.create_all()
 
     return app
-
 
 # if __name__ == "__main__":
 #     app = create_app()
