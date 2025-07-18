@@ -54,6 +54,9 @@ import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 import { uploadPdf, fetchDocs, deleteDoc } from '@/api/pdf'
 
+const file = ref(null)
+const loading = ref(false)
+const message = ref('')
 const docs = ref([])
 const columns = [
   { type: 'selection', key: '_checked', title: '' },
@@ -76,6 +79,10 @@ async function load() {
 onMounted(load)
 
 // 上传文件的函数
+function onFileChange(e) {
+  file.value = e.target.files[0]
+}
+
 async function upload() {
   if (!file.value) {
     alert('请先选择 PDF')
