@@ -8,7 +8,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    base: '/DocMind/',
+    base: './',
+    build: {
+      assetsDir: 'assets',  // 明确指定 assets 目录
+    },
     plugins: [
       vue(),
       vueDevTools(),
@@ -23,7 +26,6 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: 'http://localhost:5000',    // 从 .env 中读取
           changeOrigin: true,
-          //           rewrite: path => path.replace(/^\/api/, '')
         }
       }
     }
