@@ -3,11 +3,11 @@
     <div class="actions mb-4">
       <div class="p-4 max-w-xl mx-auto">
         <!-- 上传文件部分 -->
-        <input type="file" accept="application/pdf" @change="onFileChange" />
+        <input type="file" accept="application/pdf" multiple @change="onFileChange" />
         <!-- 确认上传按钮 -->
-        <button class="mt-2 px-4 py-2 rounded shadow bg-blue-500 text-white" :disabled="!file || loading"
-          @click="upload">
-          {{ loading ? '上传中…' : '上传' }}
+        <button class="mt-2 px-4 py-2 rounded shadow bg-blue-500 text-white" :disabled="!files.length || loading"
+          @click="uploadAll">
+          {{ loading ? '上传中…' : '上传全部' }}
         </button>
 
         <div v-if="message" class="mt-4 text-green-600">{{ message }}</div>
@@ -39,9 +39,10 @@ import {
 import MarkdownIt from 'markdown-it'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
-import { uploadPdf, fetchDocs, deleteDoc } from '@/api/pdf'
+import { uploadPdf, uploadPdfs, fetchDocs, deleteDoc } from '@/api/pdf'
 
 const file = ref(null)
+const files = ref([])
 const loading = ref(false)
 const message = ref('')
 const docs = ref([])
@@ -125,7 +126,7 @@ onMounted(load)
 
 // 上传文件的函数
 function onFileChange(e) {
-  file.value = e.target.files[0]
+  files.value = Array.from(e.target.files)
 }
 
 async function upload() {
@@ -143,6 +144,33 @@ async function upload() {
     form.append('file', file.value)
     const { data } = await uploadPdf(form)
     message.value = `上传成功：${data.pdf_name}`
+
+    setTimeout(() => {
+      load()
+    }, 1000)
+  } catch (err) {
+    console.error(err)
+    alert('上传失败，请检查后端是否正常运行')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function uploadAll() {
+  if (!files.value.length) {
+    alert('请先选择至少一个 PDF')
+    return
+  }
+  loading.value = true
+  message.value = ''
+
+  try {
+    const form = new FormData()
+    files.value.forEach(f => form.append('files', f))
+    // 调用新的批量接口
+    const { data } = await uploadPdfs(form)
+    const names = data.map(item => item.pdf_name).join('，')
+    message.value = `上传成功：${names}`
 
     setTimeout(() => {
       load()
@@ -235,7 +263,7 @@ async function batchDelete() {
 }
 
 .markdown-body {
-  max-height: 70vh;
+  max-height: 88vh;
   overflow: auto;
   padding: 1em;
   background: #ffffff;

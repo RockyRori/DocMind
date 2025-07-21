@@ -54,6 +54,54 @@ def upload_file():
     return jsonify(rec.to_dict()), 201
 
 
+@files_bp.route("/batch", methods=["POST"])
+def upload_files_batch():
+    """
+    批量上传 PDF 文件：
+    前端需以 'files' 字段上传多个文件。
+    返回所有已接收并入库的记录列表。
+    """
+    uploaded_list = request.files.getlist("files")
+    if not uploaded_list:
+        return jsonify({"error": "缺少 files 字段"}), 400
+
+    file_base = request.form.get("file_base", "server_default")
+    folder = ensure_upload_folder(file_base)
+
+    results = []
+    for uploaded in uploaded_list:
+        filename = uploaded.filename
+        save_path = os.path.join(folder, filename)
+        uploaded.save(save_path)
+        pdf_size = f"{os.path.getsize(save_path) / 1024 / 1024:.1f}MB"
+
+        # 创建或更新记录
+        rec = FileRecord.query.get((file_base, filename))
+        if not rec:
+            rec = FileRecord(
+                file_base=file_base,
+                pdf_name=filename,
+                file_path=folder,
+                pdf_size=pdf_size,
+                pdf_time=datetime.utcnow(),
+                md_name="UNKNOWN",
+                md_size="UNKNOWN",
+                md_time=datetime.utcnow()
+            )
+            db.session.add(rec)
+        else:
+            rec.pdf_size = pdf_size
+            rec.pdf_time = datetime.utcnow()
+        db.session.commit()
+
+        # 异步转换
+        async_convert_with_local_mineru(current_app._get_current_object(), rec.file_base, rec.pdf_name)
+
+        results.append(rec.to_dict())
+
+    return jsonify(results), 201
+
+
 @files_bp.route("/download/pdf/<file_base>/<path:filename>", methods=["GET"])
 def download_pdf(file_base, filename):
     folder = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base)

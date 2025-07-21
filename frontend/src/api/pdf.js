@@ -15,6 +15,13 @@ export function uploadPdf(formData) {
     })
 }
 
+// 新增批量文件接口
+export function uploadPdfs(formData) {
+    return api.post('/files/batch', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    })
+}
+
 export function fetchDocs() {
     return api.get('/files')
 }
