@@ -85,6 +85,17 @@ def download_md(file_base, md_name):
     )
 
 
+@files_bp.route("/download/images/<file_base>/<pdf_no_ext>/<path:filename>")
+def download_image(file_base, pdf_no_ext, filename):
+    """
+    例如 GET /api/files/download/images/server_default/常州/1f7627...jpg
+    """
+    base = current_app.config["UPLOAD_FOLDER"]
+    folder = os.path.join(base, file_base, pdf_no_ext, "vlm", "images")
+    return send_from_directory(folder, filename, as_attachment=False,
+                               mimetype="image/jpeg")
+
+
 @files_bp.route("/<file_base>/<pdf_name>", methods=["DELETE"])
 def delete_file(file_base, pdf_name):
     """

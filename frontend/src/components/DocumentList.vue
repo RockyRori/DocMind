@@ -54,6 +54,20 @@ function rowKey(row) {
   return row.pdf_name
 }
 
+mdParser.use((md) => {
+  const defaultImage = md.renderer.rules.image
+  md.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx]
+    let src = token.attrGet("src")
+    if (src && src.startsWith("images/")) {
+      // env.imgPrefix 从 to_dict() 里传过来的前缀
+      src = env.imgPrefix + src.replace(/^images\//, "")
+      token.attrSet("src", src)
+    }
+    return (defaultImage || self.renderToken)(tokens, idx, options, env, self)
+  }
+})
+
 // 渲染列定义，使用 render 函数
 const columns = [
   { type: 'selection', title: '勾选' },
@@ -80,7 +94,7 @@ const columns = [
         onClick: async () => {
           const res = await fetch(row.md_url)
           const text = await res.text()
-          renderedMd.value = mdParser.render(text)
+          renderedMd.value = mdParser.render(text, { imgPrefix: row.img_prefix })
           showMdModal.value = true
         },
         style: { cursor: 'pointer', color: '#409EFF' }
