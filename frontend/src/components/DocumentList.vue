@@ -175,17 +175,50 @@ async function batchDownloadPDF() {
 }
 
 async function batchDownloadMD() {
+  // 1. 选出已完成的文档
   const selected = docs.value.filter(
     d => checkedKeys.value.includes(d.pdf_name) && d.md_name !== 'UNKNOWN'
   )
   if (!selected.length) return
+
   const zip = new JSZip()
+
   for (const row of selected) {
-    const blob = await fetch(row.md_url).then(r => r.blob())
-    zip.file(row.md_name, blob)
+    // 去掉 .pdf 后缀，作为在 zip 中的子文件夹名
+    const baseName = row.pdf_name.replace(/\.pdf$/i, '')
+    const folder = zip.folder(baseName)
+
+    // 2. 下载 Markdown 文本
+    const mdRes = await fetch(row.md_url)
+    const mdText = await mdRes.text()
+    // 保存 .md
+    folder.file(row.md_name, mdText)
+
+    // 3. 从 Markdown 文本中提取所有 images/xxx.jpg 的文件名
+    const imgNames = Array.from(
+      mdText.matchAll(/!\[.*?\]\(\s*images\/([^)\s]+)\s*\)/g)
+    ).map(m => m[1])
+
+    if (imgNames.length) {
+      const imgFolder = folder.folder('images')
+      // 4. 逐个下载图片并保存到 zip
+      for (const imgName of imgNames) {
+        try {
+          const imgUrl = row.img_prefix + imgName
+          const imgRes = await fetch(imgUrl)
+          if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`)
+          const blob = await imgRes.blob()
+          imgFolder.file(imgName, blob)
+        } catch (err) {
+          console.warn(`图片下载失败: ${imgName}`, err)
+        }
+      }
+    }
   }
+
+  // 5. 打包并触发下载
   const content = await zip.generateAsync({ type: 'blob' })
-  saveAs(content, 'markdowns.zip')
+  saveAs(content, 'markdown_with_images.zip')
 }
 
 async function batchDelete() {

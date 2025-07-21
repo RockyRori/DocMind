@@ -21,6 +21,26 @@ class FileRecord(db.Model):
         return os.path.splitext(self.pdf_name)[0]
 
     @property
+    def pdf_url(self) -> str:
+        """下载或预览 PDF 的 URL"""
+        return url_for(
+            'files.download_pdf',
+            file_base=self.file_base,
+            filename=self.pdf_name,
+            _external=False
+        )
+
+    @property
+    def md_url(self) -> str:
+        """下载或预览 Markdown 的 URL"""
+        return url_for(
+            'files.download_md',
+            file_base=self.file_base,
+            md_name=self.md_name,
+            _external=False
+        )
+
+    @property
     def img_prefix(self) -> str:
         """动态生成前端访问图片的前缀 URL（不改变数据库）"""
         # send_image 路由需要在 routes/files.py 中定义，如前所述
@@ -42,18 +62,8 @@ class FileRecord(db.Model):
             "md_size": self.md_size,
             "md_time": self.md_time.strftime("%Y/%m/%d %H:%M:%S"),
             # 前端直接用这个 URL 预览 PDF
-            "pdf_url": url_for(
-                "files.download_pdf",
-                file_base=self.file_base,
-                filename=self.pdf_name,
-                _external=False
-            ),
+            "pdf_url": self.pdf_url,
             # 前端直接用这个 URL 下载 MD
-            "md_url": url_for(
-                "files.download_md",
-                file_base=self.file_base,
-                md_name=self.md_name,
-                _external=False
-            ),
+            "md_url": self.md_url,
             "img_prefix": self.img_prefix
         }
