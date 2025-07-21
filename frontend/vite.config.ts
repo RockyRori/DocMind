@@ -25,13 +25,9 @@ export default defineConfig(({ mode }) => {
       // 在本地部署和虚拟机部署的时候切换
       proxy: {
         '/api': {
-          target: 'http://localhost:5000',    // 从 .env 中读取
+          target: 'http://localhost:5000',
           changeOrigin: true,
         }
-        // '/api': {
-        //   target: 'http://172.20.41.146:5000',    // 从 .env 中读取
-        //   changeOrigin: true,
-        // }
       }
     }
   }

@@ -27,7 +27,7 @@ class FileRecord(db.Model):
             'files.download_pdf',
             file_base=self.file_base,
             filename=self.pdf_name,
-            _external=False
+            _external=True
         )
 
     @property
@@ -37,7 +37,7 @@ class FileRecord(db.Model):
             'files.download_md',
             file_base=self.file_base,
             md_name=self.md_name,
-            _external=False
+            _external=True
         )
 
     @property
