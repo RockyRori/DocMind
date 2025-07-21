@@ -49,7 +49,7 @@ class FileRecord(db.Model):
             file_base=self.file_base,
             pdf_no_ext=self.name_no_ext,
             filename='',
-            _external=False
+            _external=True
         )
 
     def to_dict(self):
