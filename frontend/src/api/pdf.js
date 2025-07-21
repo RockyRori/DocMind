@@ -1,9 +1,11 @@
 import axios from 'axios'
 
+
 const api = axios.create({
     baseURL: 'http://172.20.41.146:5000/api'
-//    baseURL: import.meta.env.VITE_API_BASE_URL // '/api'
+    //    baseURL: import.meta.env.VITE_API_BASE_URL // '/api'
 })
+
 
 export function uploadPdf(formData) {
     return api.post('/files', formData, {
