@@ -167,6 +167,10 @@ async function load() {
 }
 
 onMounted(load)
+// 上传文件的函数
+function onFileChange(e) {
+  files.value = Array.from(e.target.files)
+}
 
 // Batch upload
 async function uploadAll() {

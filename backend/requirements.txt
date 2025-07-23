@@ -6,3 +6,4 @@ PyMySQL
 PyPDF2
 python-docx
 markdown
+pypandoc

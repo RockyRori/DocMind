@@ -4,6 +4,7 @@ import shutil
 import threading
 import subprocess
 import time
+import pypandoc
 from datetime import datetime
 from flask import current_app
 from backend.app import db
@@ -123,5 +124,18 @@ def async_convert_with_local_mineru(app, file_base: str, pdf_name: str):
                 rec.md_time = datetime.utcnow()
                 rec.md_size = f"{os.path.getsize(src_md) / 1024:.1f}KB"
                 # db.session.commit() 随 with db.session.begin() 一起自动提交
+            # 事务提交后执行后续步骤
+            try:
+                extra_args = [
+                    '--resource-path', vlm_dir,
+                    '--resource-path', os.path.join(vlm_dir, 'images')
+                ]
+                # 6. Markdown 转换为 Word 文档
+                docx_name = f"{name}.docx"
+                docx_path = os.path.join(folder, docx_name)
+                pypandoc.convert_file(source_file=src_md, to='docx', extra_args=extra_args, outputfile=docx_path)
+                current_app.logger.info(f"已生成 Word 文档: {docx_path}")
+            except Exception as e:
+                current_app.logger.error(f"Markdown 转换 Word 失败: {e}")
 
     threading.Thread(target=task, daemon=True).start()
