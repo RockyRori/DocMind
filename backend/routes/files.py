@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from flask import (
     Blueprint, request, jsonify, current_app,
     send_from_directory, abort
@@ -15,43 +15,6 @@ files_bp = Blueprint("files", __name__)
 def list_files():
     recs = FileRecord.query.order_by(FileRecord.pdf_time.desc()).all()
     return jsonify([r.to_dict() for r in recs])
-
-
-@files_bp.route("", methods=["POST"])
-def upload_file():
-    uploaded = request.files.get("file")
-    if not uploaded:
-        return jsonify({"error": "缺少 file 字段"}), 400
-
-    file_base = request.form.get("file_base", "server_default")
-    folder = ensure_upload_folder(file_base)
-
-    # 1. 保存 PDF
-    filename = uploaded.filename
-    save_path = os.path.join(folder, filename)
-    uploaded.save(save_path)
-    pdf_size = f"{os.path.getsize(save_path) / 1024 / 1024:.1f}MB"
-
-    # 2. 创建或更新数据库记录
-    rec = FileRecord.query.get((file_base, filename))
-    if not rec:
-        rec = FileRecord(
-            file_base=file_base,
-            pdf_name=filename,
-            file_path=folder,
-            pdf_size=pdf_size
-        )
-        db.session.add(rec)
-    else:
-        rec.pdf_size = pdf_size
-        rec.pdf_time = datetime.utcnow()
-    db.session.commit()
-
-    # 3. 异步调用本地 mineru CLI 生成 Markdown
-    async_convert_with_local_mineru(current_app._get_current_object(), rec.file_base, rec.pdf_name)
-
-    # 4. 返回记录（此时 md_name 仍为 UNKNOWN）
-    return jsonify(rec.to_dict()), 201
 
 
 @files_bp.route("/batch", methods=["POST"])
@@ -70,28 +33,31 @@ def upload_files_batch():
 
     results = []
     for uploaded in uploaded_list:
-        filename = uploaded.filename
-        save_path = os.path.join(folder, filename)
+        pdf_name = uploaded.filename
+        save_path = os.path.join(folder, pdf_name)
         uploaded.save(save_path)
         pdf_size = f"{os.path.getsize(save_path) / 1024 / 1024:.1f}MB"
 
         # 创建或更新记录
-        rec = FileRecord.query.get((file_base, filename))
+        rec = FileRecord.query.get((file_base, pdf_name))
         if not rec:
             rec = FileRecord(
-                file_base=file_base,
-                pdf_name=filename,
-                file_path=folder,
+                pdf_name=pdf_name,
                 pdf_size=pdf_size,
-                pdf_time=datetime.utcnow(),
+                pdf_time=datetime.now(timezone(timedelta(hours=8))),
+                docx_name="UNKNOWN",
+                docx_size="UNKNOWN",
+                json_name="UNKNOWN",
+                json_size="UNKNOWN",
                 md_name="UNKNOWN",
                 md_size="UNKNOWN",
-                md_time=datetime.utcnow()
+                file_base=file_base,
+                file_path=folder,
             )
             db.session.add(rec)
         else:
             rec.pdf_size = pdf_size
-            rec.pdf_time = datetime.utcnow()
+            rec.pdf_time = datetime.now(timezone(timedelta(hours=8)))
         db.session.commit()
 
         # 异步转换
@@ -102,14 +68,34 @@ def upload_files_batch():
     return jsonify(results), 201
 
 
-@files_bp.route("/download/pdf/<file_base>/<path:filename>", methods=["GET"])
-def download_pdf(file_base, filename):
+@files_bp.route("/download/pdf/<file_base>/<path:pdf_name>", methods=["GET"])
+def download_pdf(file_base, pdf_name):
     folder = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base)
-    file_path = os.path.join(folder, filename)
+    file_path = os.path.join(folder, pdf_name)
     if not os.path.exists(file_path):
         abort(404)
     # as_attachment=False 让浏览器内联显示
-    return send_from_directory(folder, filename, as_attachment=False)
+    return send_from_directory(folder, pdf_name, as_attachment=False)
+
+
+@files_bp.route("/download/docx/<file_base>/<path:docx_name>", methods=["GET"])
+def download_docx(file_base, docx_name):
+    folder = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base)
+    file_path = os.path.join(folder, docx_name)
+    if not os.path.exists(file_path):
+        abort(404)
+
+    return send_from_directory(folder, docx_name, as_attachment=False)
+
+
+@files_bp.route("/download/json/<file_base>/<path:json_name>", methods=["GET"])
+def download_json(file_base, json_name):
+    folder = os.path.join(current_app.config["UPLOAD_FOLDER"], file_base)
+    file_path = os.path.join(folder, json_name)
+    if not os.path.exists(file_path):
+        abort(404)
+
+    return send_from_directory(folder, json_name, as_attachment=False)
 
 
 @files_bp.route("/download/md/<file_base>/<path:md_name>", methods=["GET"])
@@ -161,13 +147,24 @@ def delete_file(file_base, pdf_name):
         except Exception as e:
             current_app.logger.warning(f"删除 PDF 文件失败 {pdf_path}: {e}")
 
-    # 删除 Markdown 文件
-    md_path = os.path.join(base_upload, file_base, rec.md_name)
-    if os.path.isfile(md_path):
+    # 删除 DOCX 文件
+    pdf_path = os.path.join(base_upload, file_base, rec.docx_name)
+    if os.path.isfile(pdf_path):
         try:
-            os.remove(md_path)
+            os.remove(pdf_path)
         except Exception as e:
-            current_app.logger.warning(f"删除 Markdown 文件失败 {md_path}: {e}")
+            current_app.logger.warning(f"删除 PDF 文件失败 {pdf_path}: {e}")
+
+    # 删除 JSON 文件
+    pdf_path = os.path.join(base_upload, file_base, rec.json_name)
+    if os.path.isfile(pdf_path):
+        try:
+            os.remove(pdf_path)
+        except Exception as e:
+            current_app.logger.warning(f"删除 PDF 文件失败 {pdf_path}: {e}")
+
+    # 删除 Markdown 文件
+    # 当前在子文件夹当中一并删除
 
     # 删除 mineru 生成的子目录
     name_without_ext = pdf_name.rsplit(".", 1)[0]
