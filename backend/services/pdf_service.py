@@ -67,7 +67,7 @@ def ensure_upload_folder(file_base: str):
 #
 #     threading.Thread(target=task, daemon=True).start()
 
-def async_convert_with_local_mineru(app,file_base: str, pdf_name: str):
+def async_convert_with_local_mineru(app, file_base: str, pdf_name: str):
     """
     异步调用本地 mineru CLI。
     只接收主键 (file_base, pdf_name)，在线程内部重新获取 ORM 对象和会话。
@@ -121,7 +121,7 @@ def async_convert_with_local_mineru(app,file_base: str, pdf_name: str):
                 # 5. 更新记录字段（不移动文件）
                 rec.md_name = f"{name}.md"
                 rec.md_time = datetime.utcnow()
-                rec.md_size = f"{os.path.getsize(src_md)/1024:.1f}KB"
+                rec.md_size = f"{os.path.getsize(src_md) / 1024:.1f}KB"
                 # db.session.commit() 随 with db.session.begin() 一起自动提交
 
     threading.Thread(target=task, daemon=True).start()

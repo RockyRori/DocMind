@@ -19,7 +19,8 @@
       </div>
     </div>
 
-    <n-data-table :columns="columns" :data="docs" :row-key="rowKey" v-model:checked-row-keys="checkedKeys" />
+    <n-data-table :columns="columns" :data="sortedDocs" :row-key="rowKey" v-model:checked-row-keys="checkedKeys"
+      class="w-full" />
     <!-- Markdown 预览弹框 -->
     <n-modal v-model:show="showMdModal" title="Markdown 预览" size="600px">
       <div class="markdown-body" v-html="renderedMd"></div>
@@ -29,39 +30,28 @@
 
 <script setup>
 import { ref, computed, onMounted, h } from 'vue'
-import {
-  NCard,
-  NButton,
-  NDataTable,
-  NCheckbox,
-  NSpace
-} from 'naive-ui'
+import { NCard, NButton, NDataTable, NCheckbox, NSpace } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
-import { uploadPdf, uploadPdfs, fetchDocs, deleteDoc } from '@/api/pdf'
+import { uploadPdfs, fetchDocs, deleteDoc } from '@/api/pdf'
 
-const file = ref(null)
+// State
 const files = ref([])
 const loading = ref(false)
 const message = ref('')
-const docs = ref([])
+const docsOriginal = ref([])  // 原始顺序
 const checkedKeys = ref([])
-const hasSelection = computed(() => checkedKeys.value.length > 0)
 const showMdModal = ref(false)
 const renderedMd = ref('')
-const mdParser = new MarkdownIt()
-function rowKey(row) {
-  return row.pdf_name
-}
 
+const mdParser = new MarkdownIt()
 mdParser.use((md) => {
   const defaultImage = md.renderer.rules.image
   md.renderer.rules.image = (tokens, idx, options, env, self) => {
     const token = tokens[idx]
     let src = token.attrGet("src")
     if (src && src.startsWith("images/")) {
-      // env.imgPrefix 从 to_dict() 里传过来的前缀
       src = env.imgPrefix + src.replace(/^images\//, "")
       token.attrSet("src", src)
     }
@@ -69,122 +59,129 @@ mdParser.use((md) => {
   }
 })
 
-// 渲染列定义，使用 render 函数
+// Sorting state
+const sortKey = ref(null)         // 'pdf_name' | 'pdf_time' | 'pdf_size'
+const sortOrder = ref(null)       // 'asc' | 'desc' | null
+
+// Compute displayed docs
+const sortedDocs = computed(() => {
+  const arr = docsOriginal.value.slice()
+  if (!sortKey.value || !sortOrder.value) {
+    return arr
+  }
+  return arr.sort((a, b) => {
+    let valA = a[sortKey.value]
+    let valB = b[sortKey.value]
+    // parse sizes if sorting size
+    if (sortKey.value === 'pdf_size') {
+      const toNum = s => parseFloat(s)
+      valA = toNum(valA)
+      valB = toNum(valB)
+    }
+    if (valA < valB) return sortOrder.value === 'asc' ? -1 : 1
+    if (valA > valB) return sortOrder.value === 'asc' ? 1 : -1
+    return 0
+  })
+})
+
+// Toggle sort cycle: null -> asc -> desc -> null
+function changeSort(key) {
+  if (sortKey.value !== key) {
+    sortKey.value = key
+    sortOrder.value = 'asc'
+  } else {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : sortOrder.value === 'desc' ? null : 'asc'
+    if (!sortOrder.value) sortKey.value = null
+  }
+}
+
+const hasSelection = computed(() => checkedKeys.value.length > 0)
+
+function rowKey(row) {
+  return row.pdf_name
+}
+
+// Columns with sort icons
 const columns = [
-  { type: 'selection', title: '勾选' },
+  { type: 'selection', title: '勾选', width: '8px' },
   {
     key: 'pdf_name',
-    title: '文件名',
-    render: row => h('a', {
-      href: row.pdf_url,
-      target: '_blank',
-      rel: 'noopener'
-    }, row.pdf_name)
+    title: () => h('div', { style: { display: 'flex', alignItems: 'center' } }, [
+      '文件名 ',
+      h('span', {
+        class: 'cursor-pointer ml-1',
+        onClick: () => changeSort('pdf_name')
+      }, sortIcon('pdf_name'))
+    ]),
+    render: row => h('a', { href: row.pdf_url, target: '_blank', rel: 'noopener' }, row.pdf_name), width: '160px'
   },
-  { key: 'pdf_time', title: '上传日期' },
-  { key: 'pdf_size', title: '文件体积' },
+  {
+    key: 'pdf_time',
+    title: () => h('div', { style: { display: 'flex', alignItems: 'center' } }, [
+      '上传日期 ',
+      h('span', { class: 'cursor-pointer ml-1', onClick: () => changeSort('pdf_time') }, sortIcon('pdf_time'))
+    ]), width: '80px'
+  },
+  {
+    key: 'pdf_size',
+    title: () => h('div', { style: { display: 'flex', alignItems: 'center' } }, [
+      '文件体积 ',
+      h('span', { class: 'cursor-pointer ml-1', onClick: () => changeSort('pdf_size') }, sortIcon('pdf_size'))
+    ]), width: '60px'
+  },
   {
     key: 'md_name',
     title: 'Markdown',
-    render: row => {
-      if (row.md_name === 'UNKNOWN') {
-        return h('span', '处理中…')
-      }
-      // 预览按钮
-      return h('a', {
+    render: row => row.md_name === 'UNKNOWN'
+      ? h('span', '处理中…')
+      : h('a', {
         onClick: async () => {
           const res = await fetch(row.md_url)
           const text = await res.text()
           renderedMd.value = mdParser.render(text, { imgPrefix: row.img_prefix })
           showMdModal.value = true
-        },
-        style: { cursor: 'pointer', color: '#409EFF' }
-      }, row.md_name)
-    }
+        }, style: { cursor: 'pointer', color: '#409EFF' }
+      }, row.md_name), width: '100px'
   }
 ]
 
-function selectAll() {
-  checkedKeys.value = docs.value.map(d => d.pdf_name)
+function sortIcon(key) {
+  if (sortKey.value !== key) return '↕'
+  return sortOrder.value === 'asc' ? '▲' : sortOrder.value === 'desc' ? '▼' : '↕'
 }
+
+function selectAll() { checkedKeys.value = docsOriginal.value.map(d => d.pdf_name) }
 function invertSelect() {
-  const all = docs.value.map(d => d.pdf_name)
+  const all = docsOriginal.value.map(d => d.pdf_name)
   checkedKeys.value = all.filter(k => !checkedKeys.value.includes(k))
 }
 
-// 刷新列表的函数
+// Load docs
 async function load() {
   try {
     const res = await fetchDocs()
-    docs.value = res.data.map(d => ({ ...d, _checked: false }))
+    docsOriginal.value = res.data
   } catch (e) {
     console.error('加载文件列表失败', e)
   }
 }
-// 在挂载时自动加载一次
+
 onMounted(load)
 
-// 上传文件的函数
-function onFileChange(e) {
-  files.value = Array.from(e.target.files)
-}
-
-async function upload() {
-  if (!file.value) {
-    alert('请先选择 PDF')
-    return
-  }
-
-  loading.value = true
-  message.value = ''
-
-  try {
-    // 上传 PDF
-    const form = new FormData()
-    form.append('file', file.value)
-    const { data } = await uploadPdf(form)
-    message.value = `上传成功：${data.pdf_name}`
-
-    setTimeout(() => {
-      load()
-    }, 1000)
-  } catch (err) {
-    console.error(err)
-    alert('上传失败，请检查后端是否正常运行')
-  } finally {
-    loading.value = false
-  }
-}
-
+// Batch upload
 async function uploadAll() {
-  if (!files.value.length) {
-    alert('请先选择至少一个 PDF')
-    return
-  }
-  loading.value = true
-  message.value = ''
-
+  if (!files.value.length) return alert('请先选择至少一个 PDF')
+  loading.value = true; message.value = ''
   try {
-    const form = new FormData()
-    files.value.forEach(f => form.append('files', f))
-    // 调用新的批量接口
+    const form = new FormData(); files.value.forEach(f => form.append('files', f))
     const { data } = await uploadPdfs(form)
-    const names = data.map(item => item.pdf_name).join('，')
-    message.value = `上传成功：${names}`
-
-    setTimeout(() => {
-      load()
-    }, 1000)
-  } catch (err) {
-    console.error(err)
-    alert('上传失败，请检查后端是否正常运行')
-  } finally {
-    loading.value = false
-  }
+    message.value = `上传成功：${data.map(i => i.pdf_name).join('，')}`
+    setTimeout(load, 1000)
+  } catch { alert('上传失败') } finally { loading.value = false }
 }
 
 async function batchDownloadPDF() {
-  const selected = docs.value.filter(d => checkedKeys.value.includes(d.pdf_name))
+  const selected = docsOriginal.value.filter(d => checkedKeys.value.includes(d.pdf_name))
   if (!selected.length) return
   try {
     const zip = new JSZip()
@@ -204,7 +201,7 @@ async function batchDownloadPDF() {
 
 async function batchDownloadMD() {
   // 1. 选出已完成的文档
-  const selected = docs.value.filter(
+  const selected = docsOriginal.value.filter(
     d => checkedKeys.value.includes(d.pdf_name) && d.md_name !== 'UNKNOWN'
   )
   if (!selected.length) return
@@ -251,7 +248,7 @@ async function batchDownloadMD() {
 
 async function batchDelete() {
   if (!confirm('确定要删除选中的文档吗？')) return
-  const selected = docs.value.filter(d => checkedKeys.value.includes(d.pdf_name))
+  const selected = docsOriginal.value.filter(d => checkedKeys.value.includes(d.pdf_name))
   await Promise.all(selected.map(row => deleteDoc(row.file_base, row.pdf_name)))
   await load()
 }
@@ -266,7 +263,7 @@ async function batchDelete() {
   max-height: 88vh;
   overflow: auto;
   padding: 1em;
-  background: #ffffff;
+  background: #fff;
   border-radius: 4px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   line-height: 1.6;
