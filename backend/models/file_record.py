@@ -6,7 +6,11 @@ from datetime import datetime, timezone, timedelta
 
 class FileRecord(db.Model):
     __tablename__ = "files"
+    # 联合主键第1个参数 file_base
+    file_base = db.Column(db.String(28), primary_key=True)
+    file_path = db.Column(db.String(511), nullable=False)
 
+    # 联合主键第2个参数 pdf_name
     pdf_name = db.Column(db.String(255), primary_key=True)
     pdf_size = db.Column(db.String(28), nullable=False)
     pdf_time = db.Column(db.DateTime, nullable=False, default=datetime.now(timezone(timedelta(hours=8))))
@@ -19,9 +23,6 @@ class FileRecord(db.Model):
 
     md_name = db.Column(db.String(255), nullable=False, default="UNKNOWN")
     md_size = db.Column(db.String(28), nullable=False, default="UNKNOWN")
-
-    file_base = db.Column(db.String(28), primary_key=True)
-    file_path = db.Column(db.String(511), nullable=False)
 
     @property
     def name_no_ext(self) -> str:
