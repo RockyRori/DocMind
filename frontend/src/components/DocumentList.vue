@@ -121,7 +121,7 @@ const columns = [
     }, [
       'PDF原件 ',
       sortIcon('pdf_name')
-    ]),
+    ]), render: row => h('a', { href: row.pdf_url, target: '_blank', rel: 'noopener' }, row.pdf_name),
     width: '80px'
   },
   {
