@@ -44,5 +44,5 @@ docmind/
 │   └── public/
 │       └── index.html
 │
-└── docker-compose.yml     # 可选：MySQL + 后端 + 前端 一键启动
+└── deploy-compose.yml     # 可选：MySQL + 后端 + 前端 一键启动
 ```
