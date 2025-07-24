@@ -1,32 +1,24 @@
 import axios from 'axios'
 
-
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL // '/api'
+    baseURL: import.meta.env.VITE_API_BASE_URL
 })
 
-
-export function uploadPdf(formData) {
-    return api.post('/files', formData, {
-        headers: {
-            'Content-Type': 'multipart/form-data'
-        }
-    })
-}
-
-// 新增批量文件接口
+// 批量上传 PDF 文件接口
 export function uploadPdfs(formData) {
     return api.post('/files/batch', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     })
 }
 
+// 获取文件列表
 export function fetchDocs() {
     return api.get('/files')
 }
 
-export function deleteDoc(fileBase, pdfName) {
-    return api.delete(`/files/${encodeURIComponent(fileBase)}/${encodeURIComponent(pdfName)}`)
+// 批量删除文档接口
+export function deleteDocs(fileBase, pdfName) {
+    const base = encodeURIComponent(fileBase)
+    const name = encodeURIComponent(pdfName)
+    return api.delete(`/files/${base}/${name}`)
 }
-
-// 不再需要前端主动调用 downloadDocMd，DocumentList 用 md_url 直接下载

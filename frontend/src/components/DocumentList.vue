@@ -11,11 +11,16 @@
         </button>
 
         <div v-if="message" class="mt-4 text-green-600">{{ message }}</div>
-        <n-button @click="batchDownloadPDF" :disabled="!hasSelection">批量下载 PDF</n-button>
-        <n-button @click="batchDownloadMD" :disabled="!hasSelection">批量下载 MD</n-button>
+        <n-button @click="batchDownloadAll" :disabled="!hasSelection">下载全部</n-button>
         <n-button @click="batchDelete" type="error" :disabled="!hasSelection">批量删除</n-button>
         <n-button @click="selectAll">全选</n-button>
         <n-button @click="invertSelect">反选</n-button>
+        <br /><br />
+        <n-button @click="batchDownloadPDF" :disabled="!hasSelection">批量下载 PDF</n-button>
+        <n-button @click="batchDownloadDocx" :disabled="!hasSelection">批量下载 Docx</n-button>
+        <n-button @click="batchDownloadJson" :disabled="!hasSelection">批量下载 JSON</n-button>
+        <n-button @click="batchDownloadMD" :disabled="!hasSelection">批量下载 MD</n-button>
+        <br /><br />
       </div>
     </div>
 
@@ -25,16 +30,21 @@
     <n-modal v-model:show="showMdModal" title="Markdown 预览" size="600px">
       <div class="markdown-body" v-html="renderedMd"></div>
     </n-modal>
+    <!-- Docx Preview -->
+    <n-modal v-model:show="showDocxModal" title="Docx 预览" size="80%">
+      <div ref="docxContainer" class="docx-container"></div>
+    </n-modal>
   </n-card>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, h } from 'vue'
+import { ref, computed, onMounted, h, nextTick } from 'vue'
 import { NCard, NButton, NDataTable, NCheckbox, NSpace } from 'naive-ui'
 import MarkdownIt from 'markdown-it'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
-import { uploadPdfs, fetchDocs, deleteDoc } from '@/api/pdf'
+import { renderAsync } from 'docx-preview'
+import { uploadPdfs, fetchDocs, deleteDocs } from '@/api/pdf'
 
 // State
 const files = ref([])
@@ -44,6 +54,8 @@ const docsOriginal = ref([])  // 原始顺序
 const checkedKeys = ref([])
 const showMdModal = ref(false)
 const renderedMd = ref('')
+const showDocxModal = ref(false)
+const docxContainer = ref(null)
 
 const mdParser = new MarkdownIt()
 mdParser.use((md) => {
@@ -62,9 +74,7 @@ mdParser.use((md) => {
 // Sorting state
 const sortKey = ref(null)         // 'pdf_name' | 'pdf_time' | 'pdf_size'
 const sortOrder = ref(null)       // 'asc' | 'desc' | null
-
-// Compute displayed docs
-const sortedDocs = computed(() => {
+const sortedDocs = computed(() => { // Compute displayed docs
   const arr = docsOriginal.value.slice()
   if (!sortKey.value || !sortOrder.value) {
     return arr
@@ -96,7 +106,6 @@ function changeSort(key) {
 }
 
 const hasSelection = computed(() => checkedKeys.value.length > 0)
-
 function rowKey(row) {
   return row.pdf_name
 }
@@ -106,34 +115,65 @@ const columns = [
   { type: 'selection', title: '勾选', width: '8px' },
   {
     key: 'pdf_name',
-    title: () => h('div', { style: { display: 'flex', alignItems: 'center' } }, [
-      '文件名 ',
-      h('span', {
-        class: 'cursor-pointer ml-1',
-        onClick: () => changeSort('pdf_name')
-      }, sortIcon('pdf_name'))
+    title: () => h('div', {
+      style: { display: 'flex', alignItems: 'center', cursor: 'pointer' },
+      onClick: () => changeSort('pdf_name')
+    }, [
+      'PDF原件 ',
+      sortIcon('pdf_name')
     ]),
-    render: row => h('a', { href: row.pdf_url, target: '_blank', rel: 'noopener' }, row.pdf_name), width: '160px'
+    width: '80px'
   },
   {
     key: 'pdf_time',
-    title: () => h('div', { style: { display: 'flex', alignItems: 'center' } }, [
-      '上传日期 ',
-      h('span', { class: 'cursor-pointer ml-1', onClick: () => changeSort('pdf_time') }, sortIcon('pdf_time'))
-    ]), width: '80px'
+    title: () => h('div', {
+      style: { display: 'flex', alignItems: 'center', cursor: 'pointer' },
+      onClick: () => changeSort('pdf_time')
+    }, [
+      '上传时间 ',
+      sortIcon('pdf_time')
+    ]),
+    width: '80px'
   },
   {
     key: 'pdf_size',
-    title: () => h('div', { style: { display: 'flex', alignItems: 'center' } }, [
-      '文件体积 ',
-      h('span', { class: 'cursor-pointer ml-1', onClick: () => changeSort('pdf_size') }, sortIcon('pdf_size'))
-    ]), width: '60px'
+    title: () => h('div', {
+      style: { display: 'flex', alignItems: 'center', cursor: 'pointer' },
+      onClick: () => changeSort('pdf_size')
+    }, [
+      '体积 ',
+      sortIcon('pdf_size')
+    ]),
+    width: '60px'
+  },
+  {
+    key: 'docx_name',
+    title: 'Docx识别', width: '100px',
+    render: row => row.docx_name === 'UNKNOWN' ? h('span', 'Docx生成中') : h('a', {
+      onClick: async () => {
+        try {
+          const buf = await fetch(row.docx_url).then(r => r.arrayBuffer())
+          await nextTick()
+          showDocxModal.value = true
+          await nextTick()
+          await renderAsync(buf, docxContainer.value)
+        } catch (e) {
+          console.error('Docx 渲染失败', e)
+          window.open(row.docx_url, '_blank')
+        }
+      }, style: { cursor: 'pointer', color: '#409EFF' }
+    }, row.docx_name)
+  },
+  {
+    key: 'json_name',
+    title: 'Json识别', width: '100px',
+    render: row => row.json_name === 'UNKNOWN' ? h('span', 'Json生成中') : h('a', { href: row.json_url, target: '_blank' }, row.json_name)
   },
   {
     key: 'md_name',
-    title: 'Markdown',
+    title: 'Markdown识别',
     render: row => row.md_name === 'UNKNOWN'
-      ? h('span', '处理中…')
+      ? h('span', 'Markdown生成中')
       : h('a', {
         onClick: async () => {
           const res = await fetch(row.md_url)
@@ -184,83 +224,138 @@ async function uploadAll() {
   } catch { alert('上传失败') } finally { loading.value = false }
 }
 
-async function batchDownloadPDF() {
-  const selected = docsOriginal.value.filter(d => checkedKeys.value.includes(d.pdf_name))
-  if (!selected.length) return
+async function addToZip(zipFolder, urlKey, nameKey, row, includeImages = false) {
+  // 主文件
   try {
-    const zip = new JSZip()
-    for (const row of selected) {
-      const res = await fetch(row.pdf_url)
-      if (!res.ok) throw new Error(`下载失败：${row.pdf_name}`)
+    const res = await fetch(row[urlKey])
+    if (res.ok) {
       const blob = await res.blob()
-      zip.file(row.pdf_name, blob)
+      zipFolder.file(row[nameKey], blob)
     }
-    const content = await zip.generateAsync({ type: 'blob' })
-    saveAs(content, 'pdfs.zip')
   } catch (e) {
-    console.error('批量下载 PDF 失败', e)
-    alert('批量下载 PDF 失败，请重试')
+    console.warn(`下载 ${row[nameKey]} 失败`, e)
+  }
+
+  // 如果是 Markdown，并且要求包含 images/
+  if (includeImages) {
+    try {
+      const resMd = await fetch(row[urlKey])
+      if (!resMd.ok) return
+      const text = await resMd.text()
+      // 提取 images/xxx.jpg
+      const imgs = Array.from(text.matchAll(/!\[.*?\]\(images\/([^\)\s]+)\)/g)).map(m => m[1])
+      if (imgs.length) {
+        const imgFolder = zipFolder.folder('images')
+        for (const imgName of imgs) {
+          try {
+            const imgRes = await fetch(row.img_prefix + imgName)
+            if (imgRes.ok) {
+              const blob = await imgRes.blob()
+              imgFolder.file(imgName, blob)
+            }
+          } catch { }
+        }
+      }
+    } catch (e) {
+      console.warn(`打包 ${row[nameKey]} 的图片失败`, e)
+    }
   }
 }
 
+// 批量下载 PDF
+async function batchDownloadPDF() {
+  const selected = docsOriginal.value.filter(d => checkedKeys.value.includes(d.pdf_name))
+  if (!selected.length) return
+  const zip = new JSZip()
+  for (const row of selected) {
+    const folder = zip.folder(row.pdf_name.replace(/\.pdf$/i, ''))
+    await addToZip(folder, 'pdf_url', 'pdf_name', row)
+  }
+  const content = await zip.generateAsync({ type: 'blob' })
+  saveAs(content, 'pdfs.zip')
+}
+
+// 批量下载 Docx
+async function batchDownloadDocx() {
+  const selected = docsOriginal.value.filter(
+    d => checkedKeys.value.includes(d.pdf_name) && d.docx_name !== 'UNKNOWN'
+  )
+  if (!selected.length) return
+  const zip = new JSZip()
+  for (const row of selected) {
+    const folder = zip.folder(row.pdf_name.replace(/\.pdf$/i, ''))
+    await addToZip(folder, 'docx_url', 'docx_name', row)
+  }
+  const content = await zip.generateAsync({ type: 'blob' })
+  saveAs(content, 'docxs.zip')
+}
+
+// 批量下载 JSON
+async function batchDownloadJson() {
+  const selected = docsOriginal.value.filter(
+    d => checkedKeys.value.includes(d.pdf_name) && d.json_name !== 'UNKNOWN'
+  )
+  if (!selected.length) return
+  const zip = new JSZip()
+  for (const row of selected) {
+    const folder = zip.folder(row.pdf_name.replace(/\.pdf$/i, ''))
+    await addToZip(folder, 'json_url', 'json_name', row)
+  }
+  const content = await zip.generateAsync({ type: 'blob' })
+  saveAs(content, 'jsons.zip')
+}
+
+// 批量下载 MD（包含 images/）
 async function batchDownloadMD() {
-  // 1. 选出已完成的文档
   const selected = docsOriginal.value.filter(
     d => checkedKeys.value.includes(d.pdf_name) && d.md_name !== 'UNKNOWN'
   )
   if (!selected.length) return
-
   const zip = new JSZip()
-
   for (const row of selected) {
-    // 去掉 .pdf 后缀，作为在 zip 中的子文件夹名
+    const folder = zip.folder(row.pdf_name.replace(/\.pdf$/i, ''))
+    await addToZip(folder, 'md_url', 'md_name', row, true)
+  }
+  const content = await zip.generateAsync({ type: 'blob' })
+  saveAs(content, 'markdowns.zip')
+}
+
+// 下载全部：PDF、MD+images、Docx、JSON
+async function batchDownloadAll() {
+  const selected = docsOriginal.value.filter(d => checkedKeys.value.includes(d.pdf_name))
+  if (!selected.length) return
+  const zip = new JSZip()
+  for (const row of selected) {
     const baseName = row.pdf_name.replace(/\.pdf$/i, '')
     const folder = zip.folder(baseName)
-
-    // 2. 下载 Markdown 文本
-    const mdRes = await fetch(row.md_url)
-    const mdText = await mdRes.text()
-    // 保存 .md
-    folder.file(row.md_name, mdText)
-
-    // 3. 从 Markdown 文本中提取所有 images/xxx.jpg 的文件名
-    const imgNames = Array.from(
-      mdText.matchAll(/!\[.*?\]\(\s*images\/([^)\s]+)\s*\)/g)
-    ).map(m => m[1])
-
-    if (imgNames.length) {
-      const imgFolder = folder.folder('images')
-      // 4. 逐个下载图片并保存到 zip
-      for (const imgName of imgNames) {
-        try {
-          const imgUrl = row.img_prefix + imgName
-          const imgRes = await fetch(imgUrl)
-          if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`)
-          const blob = await imgRes.blob()
-          imgFolder.file(imgName, blob)
-        } catch (err) {
-          console.warn(`图片下载失败: ${imgName}`, err)
-        }
-      }
+    await addToZip(folder, 'pdf_url', 'pdf_name', row)
+    if (row.md_name !== 'UNKNOWN') {
+      await addToZip(folder, 'md_url', 'md_name', row, true)
+    }
+    if (row.docx_name !== 'UNKNOWN') {
+      await addToZip(folder, 'docx_url', 'docx_name', row)
+    }
+    if (row.json_name !== 'UNKNOWN') {
+      await addToZip(folder, 'json_url', 'json_name', row)
     }
   }
-
-  // 5. 打包并触发下载
   const content = await zip.generateAsync({ type: 'blob' })
-  saveAs(content, 'markdown_with_images.zip')
+  saveAs(content, 'all_files.zip')
 }
 
-async function batchDelete() {
-  if (!confirm('确定要删除选中的文档吗？')) return
-  const selected = docsOriginal.value.filter(d => checkedKeys.value.includes(d.pdf_name))
-  await Promise.all(selected.map(row => deleteDoc(row.file_base, row.pdf_name)))
-  await load()
-}
+async function batchDelete() { if (!confirm('删除?')) return; await Promise.all(docsOriginal.value.filter(d => checkedKeys.value.includes(d.pdf_name)).map(r => deleteDocs(r.file_base, r.pdf_name))); load() }
+
 </script>
 
 <style scoped>
 .my-card {
-  min-width: 800px;
+  min-width: 1000px;
+}
+
+.docx-container {
+  width: 100%;
+  height: 90vh;
+  overflow: auto;
 }
 
 .markdown-body {
