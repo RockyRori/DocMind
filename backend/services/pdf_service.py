@@ -50,6 +50,7 @@ def async_convert_with_local_mineru(app, file_base: str, pdf_name: str):
                     "-b", "vlm-sglang-client",
                     "-u", "http://172.16.0.176:30000"
                 ]
+                # 需要在本地部署一个mineru模型。
                 subprocess.run(cmd, check=True, cwd=folder)
 
                 # 4. 等待 Markdown 生成
